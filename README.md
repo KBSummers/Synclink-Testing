@@ -1,9 +1,11 @@
 # Synclink Testing
+
+
 **Meant to be built and ran on a Linux environment** 
 
 In order to build the test provided here, first you must clone this repository to your local  machines' file system:
 ```bash
-$ git clone https://dev.masten.aero/ksummers/synclink-testing.git 
+$ git clone https://github.com/KBSummers/Synclink-Testing.git 
 ```
 Then simply build to the source code into an executable and run the test, with the following commands:
 ```bash
