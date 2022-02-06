@@ -2,7 +2,7 @@
 
 
 **Meant to be built and ran on a Linux environment** 
-Test
+
 In order to build the test provided here, first you must clone this repository to your local  machines' file system:
 ```bash
 $ git clone https://github.com/KBSummers/Synclink-Testing.git 
