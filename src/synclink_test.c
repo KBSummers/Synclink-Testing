@@ -261,6 +261,15 @@ int main(int argc, char* argv[])
 	unsigned char buf[DATA_SIZE*2];
 	char *devname;
 	pthread_t receive_thread;
+        /*
+        for (int j = 0; j < (sizeof(struct usb_table) / sizeof(struct
+table_entry)); j++){ printf("herherherhe"); printf("frequency: %d\n",
+usb_table[j].freq);
+        }
+        */
+        for(int i = 0 ; i < 13; i++){
+            printf("frequency: %d\n", usb_table[i].freq);
+        }
 	if (argc > 1)
 		devname = argv[1];
 	else
