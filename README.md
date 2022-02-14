@@ -7,15 +7,26 @@ In order to build the test provided here, first you must clone this repository t
 ```bash
 $ git clone https://github.com/KBSummers/Synclink-Testing.git 
 ```
-Then simply build to the source code into an executable and run the test, with the following commands:
+Then, to build all tests and utilities:
 ```bash
 make
-./test
 ```
-The test will automatically look for a device titled: `TTYSLG0`, a naming convention used by Microgate for their serial devices. If it does not find this, it will parse for devices with the "USB"" title. This should find the synclink device... but if not this can be solved by suppliying the device name as a command line argument such as:
+Change into the testloop directory:
 ```bash
-./test <device_name>
+cd src/loopback/
 ```
+We can now run the loopback test from here, with either:
+- No arguments (ran at default rate of 2kbps)
+- One argument (rate of argument in bps)
+``` bash
+# 2kbps default
+./testloop
+
+# specified rate in bps
+./testloop [date_rate]
+```
+There is a strong possibility of naming conflicts for the device (The linux kernel will not pick it up as the Microgate default naming convention "ttySLG")... Not to worry this can be solved with a udev rule. 
+
 To rebuild the application, first run:
 ```bash
 make clean
