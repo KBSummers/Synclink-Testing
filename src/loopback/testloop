@@ -3,7 +3,6 @@
 #
 # sample script to configure a SyncLink device and run a loopback test
 #
-# By default, an internal loopback of 10 HDLC frames is performed.
 #
 # Edit the macros below to alter the test configuration.
 #
@@ -34,7 +33,7 @@ if [ $# -eq 0 ] ; then
 else
     SPEED=$1
 fi
-
+# Change this '007' below to reflect naming on Avery's machine
 DEVICE=$DEV_DIR/007
 #echo "$DEVICE"
 

@@ -10,10 +10,15 @@ CFLAGS += -O2
 endif
 .PHONY: clean
 
-all: test
+all: test loopback
+
+.PHONY: loopback
+loopback:
+	make -C src/loopback/
 
 test: src/synclink_test.c $(SYNCLINK_H)
 	gcc $(CFLAGS) -o $@ $<  -lpthread
 
 clean:
 	if [ -f test ]; then rm test; fi
+	cd src/loopback/ && $(MAKE) clean
