@@ -36,7 +36,7 @@ else
 fi
 
 DEVICE=$DEV_DIR/007
-echo "$DEVICE"
+#echo "$DEVICE"
 
 #if [ ! -z $1 ] ; then
 #	DEVICE=$1
@@ -114,7 +114,10 @@ echo $LOOPBACK loopback test on $DEVICE, mode=$MODE speed=$SPEED b/s, $COUNT Pac
 if [ ${MODE} = hdlc ] ; then
     # HDLC mode
     # configure device with mgslutil
-    ${dir}/mgslutil $DEVICE quiet hdlc idle1 $IF clock $SPEED $CLOCKS $LOOPBACK_OPT
+    # Original command:
+    # ${dir}/mgslutil $DEVICE quiet hdlc idle1 $IF clock $SPEED $CLOCKS $LOOPBACK_OPT
+    # New commands:
+    ${dir}/mgslutil $DEVICE crc16ex hdlc idle1 $IF clock $SPEED $CLOCKS $LOOPBACK_OPT
 else
     # asynchronous mode
     # configure synclink specific settings with mgslutil

@@ -296,12 +296,13 @@ int main(int argc, char* argv[])
 	}
 
 	sprintf(devname, "%s", argv[1]);
-
-	/* SyncLink PC Card has programmable interface */
+        // Changing this due to device naming conflicts
+	/* SyncLink PC Card has programmable interface
 	if (strstr(devname,"ttySLP") || strstr(devname,"ttySLG") ||
 	    strstr(devname,"ttyUSB"))
 		programmable_if = 1;
-
+        */
+        programmable_if = 1;
 	rc = get_params(devname,&params,&idlemode);
 	if (rc<0)
 		exit(rc);
@@ -518,6 +519,9 @@ void display_params(char *devname, MGSL_PARAMS* params, int idlemode)
 			       (if_mode & MGSL_INTERFACE_RTS_EN) ? enabled_str : disabled_str);
 		}
 	}
+        // Maybe comment this out below for naming conflict resolution
+        printf("RTS driver control %s\n",
+			       (if_mode & MGSL_INTERFACE_RTS_EN) ? enabled_str : disabled_str);
 
 	switch(params->mode) {
 	case MGSL_MODE_ASYNC:	 str = "Async"; break;
