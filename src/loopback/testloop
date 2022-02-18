@@ -10,7 +10,7 @@
 # provided with your hardware.
 #
 
-DEV_DIR=/dev/bus/usb/001
+#DEV_DIR=/dev/bus/usb/001
 # NEW command line arguments syntax :
 # USAGE:
 # ./testloop  <--- no args, default data rate = 2k bits/second
@@ -33,8 +33,8 @@ if [ $# -eq 0 ] ; then
 else
     SPEED=$1
 fi
-# Change this '007' below to reflect naming on Avery's machine
-DEVICE=$DEV_DIR/007
+
+DEVICE=dev/ttySLG
 #echo "$DEVICE"
 
 #if [ ! -z $1 ] ; then

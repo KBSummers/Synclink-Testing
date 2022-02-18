@@ -16,9 +16,9 @@ all: test loopback
 loopback:
 	make -C src/loopback/
 
-test: src/synclink_test.c $(SYNCLINK_H)
-	gcc $(CFLAGS) -o $@ $< -lpthread
+test: src/raw_test_old/synclink_test.c $(SYNCLINK_H)
+	gcc $(CFLAGS) -o src/raw_test_old/$@ $< -lpthread
 
 clean:
-	if [ -f test ]; then rm test; fi
+	if [ -f src/raw_test_old/test ]; then rm src/raw_test_old/test; fi
 	$(MAKE) -C src/loopback clean
