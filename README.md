@@ -20,10 +20,10 @@ We can now run the loopback test from here, with either:
 - One argument (rate of argument in bps)
 ``` bash
 # 2kbps default
-./testloop
+sudo ./testloop
 
 # specified rate in bps
-./testloop [date_rate]
+sudo ./testloop [date_rate]
 ```
 There is a strong possibility of naming conflicts for the device (The linux kernel will not pick it up as the Microgate default naming convention "ttySLG")... Not to worry this can be solved with a udev rule. 
 
