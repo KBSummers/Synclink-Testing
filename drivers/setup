@@ -1,0 +1,503 @@
+#!/bin/sh
+
+#
+# build/install/clean synclink drivers
+#
+# Build and install drivers:
+#     Manually set KERNEL_SOURCE to kernel source directory or
+#     specify kernel source directory as single command line argument or
+#     allow script to use source directory of currently running kernel.
+#
+# Clean previous build files from current directory:
+#     Run with single command line argument 'clean'.
+#
+KERNEL_SOURCE=
+
+
+displayInfo() {
+    echo
+    echo "Supported OS:"
+    echo "   Rocky Linux/CentOS/RHEL 6.X, 7.X and 8.X"
+    echo "   Debian 8.X, 9.X, 10.X and 11.X"
+    echo "   Ubuntu 14.X, 16.X, 18.X, 19.X, 20.X, 21.X"
+    echo "   Raspian 8, 9 and 10"
+    echo "   openSUSE Leap 15"
+    echo
+    echo "Note: CentOS/RHEL 5.x does not support SyncLink USB"
+    echo
+    echo "Driver build requires kernel source directory containing"
+    echo "kernel configuration file, headers and select generated files."
+    echo
+    echo "This script searches for full path of kernel source directory"
+    echo "in the following order:"
+    echo "1. first command line argument for script"
+    echo "2. KERNEL_SOURCE variable in script"
+    echo "3. kernel source directory for currently running kernel"
+    echo
+    echo "You may attempt to build for unsupported OS by specifying the kernel"
+    echo "source directory using method 1 or 2 above and performing necessary"
+    echo "preparation of the kernel source."
+    echo
+    echo "RHEL/CentOS requires kernel-devel package to build for running kernel"
+    echo "If not installed, try command:"
+    echo "#yum install kernel-devel"
+    echo
+    echo "Ubuntu/Debian requires linux-headers package to build for running kernel"
+    echo "If not installed, try command:"
+    echo "#apt-get install linux-headers"
+    echo
+    echo "Raspian requires raspberrypi-linux-headers package to build for running kernel"
+    echo "If not installed, try command:"
+    echo "#apt-get install raspberrypi-linux-headers"
+    echo
+}
+
+displayFailAndExit () {
+    echo
+    echo "Unable to build driver."
+    displayInfo
+    exit 1;
+}
+
+
+# verify kernel version $1 is greater than or equal to $2
+version_check () {
+    local version=`echo $1 | awk -F "." '{print $1}'`
+    local patchlevel=`echo $1 | awk -F "." '{print $2}'`
+    local sublevel=`echo $1 | awk -F "." '{print $3}'`
+    # remove trailing -xxx decoration of RHEL sublevel
+    sublevel=${sublevel%%"-"*}
+    if [ -z "$version" ]    ; then version="0"    ; fi
+    if [ -z "$patchlevel" ] ; then patchlevel="0" ; fi
+    if [ -z "$sublevel" ]   ; then sublevel="0"   ; fi
+    
+    local min_version=`echo $2 | awk -F "." '{print $1}'`
+    local min_patchlevel=`echo $2 | awk -F "." '{print $2}'`
+    local min_sublevel=`echo $2 | awk -F "." '{print $3}'`
+    if [ -z "$min_version" ]    ; then min_version="0"    ; fi
+    if [ -z "$min_patchlevel" ] ; then min_patchlevel="0" ; fi
+    if [ -z "$min_sublevel" ]   ; then min_sublevel="0"   ; fi
+    
+    if [ "$version"    -lt "$min_version"    ] ; then return 1 ; fi
+    if [ "$version"    -gt "$min_version"    ] ; then return 0 ; fi
+    if [ "$patchlevel" -lt "$min_patchlevel" ] ; then return 1 ; fi
+    if [ "$patchlevel" -gt "$min_patchlevel" ] ; then return 0 ; fi
+    if [ "$sublevel"   -lt "$min_sublevel"   ] ; then return 1 ; fi
+    return 0
+}
+
+
+#
+# set the following variables:
+# OS_ID = operating system identifier
+# OS_VERSION = operating system version
+#
+set_os() {
+    if [ -f /etc/os-release ] ; then
+        OS_ID=`awk -F "=" '/^ID=/ {gsub(/"/, "", $2);print $2}' /etc/os-release`
+        OS_VERSION=`awk -F "=" '/^VERSION_ID=/ {gsub(/"/, "", $2);print $2}' /etc/os-release`
+    elif [ -z "$OS_ID" ] && [ -f /etc/redhat-release ] ; then
+        # CentOS/RHEL 6.x
+        REDHAT_RELEASE=`cat /etc/redhat-release`
+        if grep -i -q "centos" /etc/redhat-release ; then
+        OS_ID=centos
+        elif grep -i -q "red hat enterprise" /etc/redhat-release ; then
+        OS_ID=rhel
+        else
+        # remove all after OS ID
+        OS_ID=${REDHAT_RELEASE%%" release"*}
+        fi
+        # remove all before release number
+        OS_VERSION=${REDHAT_RELEASE##*"release "}
+    elif [ -f /etc/debian_version ] ; then
+        DEBIAN_VERSION=`cat /etc/debian_version`
+        OS_ID=debian
+        # remove all after version major
+        OS_VERSION=${DEBIAN_VERSION%%"."*}
+    fi
+    if [ -z "$OS_ID" ] ; then
+        OS_ID=unknown
+    fi
+    if [ -n "$OS_VERSION" ] ; then
+        # remove all after leading OS major number
+        OS_VERSION=${OS_VERSION%%\.*}
+    else
+        OS_VERSION=unknown
+    fi
+}
+
+
+#
+# print warning if not running supported OS
+#
+# set the following variables:
+# RUNNING_KERNEL_VERSION = version of currently running kernel
+# RUNNING_KERNEL_SOURCE = directory with source of currently running kernel
+#
+verify_os() {
+    #
+    # supportet OS versions
+    #
+    RHEL_MIN_VERSION=5
+    RHEL_MAX_VERSION=8
+    DEBIAN_MIN_VERSION=8
+    DEBIAN_MAX_VERSION=11
+    UBUNTU_MIN_VERSION=14
+    UBUNTU_MAX_VERSION=21
+    RASPBIAN_MIN_VERSION=8
+    RASPBIAN_MAX_VERSION=10
+    OPENSUSE_LEAP_MIN_VERSION=15
+    OPENSUSE_LEAP_MAX_VERSION=15
+
+    RUNNING_KERNEL_VERSION=`uname -r`
+    echo "$OS_ID $OS_VERSION, kernel:$RUNNING_KERNEL_VERSION"
+    case "$OS_ID" in
+        "rhel" | "centos" | "rocky" )
+        RUNNING_KERNEL_SOURCE="/usr/src/kernels/$RUNNING_KERNEL_VERSION";
+        if [ "$OS_VERSION" -lt "$RHEL_MIN_VERSION" ] || [ "$OS_VERSION" -gt "$RHEL_MAX_VERSION" ] ; then
+            echo "Supported $OS_ID versions: $RHEL_MIN_VERSION to $RHEL_MAX_VERSION"
+        fi
+        if [ "$OS_VERSION" -lt "6" ] ; then
+            RUNNING_KERNEL_SOURCE=$RUNNING_KERNEL_SOURCE-`uname -m`
+        fi
+        ;;
+        "opensuse-leap" )
+        OS_ID="opensuse"
+        KERNEL_FLAVOR=${RUNNING_KERNEL_VERSION##*-}
+        RUNNING_KERNEL_SOURCE=/usr/src/linux-${RUNNING_KERNEL_VERSION%-*}-obj/`uname -m`/$KERNEL_FLAVOR
+        RUNNING_KERNEL_HEADER=/usr/src/linux-${RUNNING_KERNEL_VERSION%-*}
+        if [ "$OS_VERSION" -lt "$OPENSUSE_LEAP_MIN_VERSION" ] || [ "$OS_VERSION" -gt "$OPENSUSE_LEAP_MAX_VERSION" ] ; then
+            echo "Supported $OS_ID versions: $OPENSUSE_LEAP_MIN_VERSION to $OPENSUSE_LEAP_MAX_VERSION"
+        fi
+        ;;
+        "debian" )
+        RUNNING_KERNEL_SOURCE="/usr/src/linux-headers-$RUNNING_KERNEL_VERSION"
+        PLATFORM_SUFFIX=`echo $RUNNING_KERNEL_SOURCE | sed -r s/.*linux-headers-[0-9]+.[0-9]+.[0-9]+-[0-9]+-//`
+        RUNNING_KERNEL_HEADER=${RUNNING_KERNEL_SOURCE%%"-"$PLATFORM_SUFFIX}"-common"
+        if [ "$OS_VERSION" -lt "$DEBIAN_MIN_VERSION" ] || [ "$OS_VERSION" -gt "$DEBIAN_MAX_VERSION" ] ; then
+            echo "Supported $OS_ID versions: $DEBIAN_MIN_VERSION to $DEBIAN_MAX_VERSION"
+        fi
+        ;;
+        "ubuntu" )
+        RUNNING_KERNEL_SOURCE="/usr/src/linux-headers-$RUNNING_KERNEL_VERSION"
+        if [ "$OS_VERSION" -lt "$UBUNTU_MIN_VERSION" ] || [ "$OS_VERSION" -gt "$UBUNTU_MAX_VERSION" ] ; then
+            echo "Supported $OS_ID versions: $UBUNTU_MIN_VERSION to $UBUNTU_MAX_VERSION"
+        fi
+        ;;
+        "raspbian" )
+        RUNNING_KERNEL_SOURCE="/usr/src/linux-headers-$RUNNING_KERNEL_VERSION"
+        echo "$OS_ID $OS_VERSION kernel:$RUNNING_KERNEL_VERSION"
+        if [ "$OS_VERSION" -lt "$RASPBIAN_MIN_VERSION" ] || [ "$OS_VERSION" -gt "$RASPBIAN_MAX_VERSION" ] ; then
+            echo "Supported $OS_ID versions: $RASPBIAN_MIN_VERSION to $RASPBIAN_MAX_VERSION"
+        fi
+        ;;
+        * )
+        RUNNING_KERNEL_SOURCE="/usr/src/kernels/$RUNNING_KERNEL_VERSION";
+        echo "Unsupported OS. Assuming procedure is same as RHEL (this may not work)"
+        ;;
+    esac
+    echo
+}
+
+# find and verify kernel source location
+set_kernel_source() {
+    if [ -n "$CMD_LINE_SRC" ] ; then
+        KERNEL_SOURCE=$CMD_LINE_SRC
+    fi
+    if [ -n "$KERNEL_SOURCE" ] ; then
+        if [ -d "$KERNEL_SOURCE" ] ; then
+            echo "Kernel source directory $KERNEL_SOURCE set."
+        else
+            echo "Kernel source directory $KERNEL_SOURCE not found." ; echo
+            exit
+        fi
+    fi
+    if [ -z "$KERNEL_SOURCE" ] && [ -d "$RUNNING_KERNEL_SOURCE" ] ; then
+        while [ true ] ; do
+            read -p "Use $RUNNING_KERNEL_SOURCE kernel source directory? [Y/n] " yn
+            if [ -z "$yn" ] ; then
+                yn="y"
+            fi
+            case "$yn" in
+                [Yy] ) KERNEL_SOURCE=$RUNNING_KERNEL_SOURCE; USE_RUNNING_KERNEL="Y"; break;;
+                [Nn] ) break;;
+                * ) echo "Invalid response. Enter y or n."; continue;;
+            esac
+        done
+    fi
+    if [ -z $KERNEL_SOURCE ] ; then
+        echo "Kernel source directory not specified and not found." ; echo
+        exit
+    fi
+    KERNEL_MAKEFILE="$KERNEL_SOURCE/Makefile"
+    if [ ! -f "$KERNEL_MAKEFILE" ]; then
+        echo "$KERNEL_MAKEFILE not found" ; echo
+        exit
+    fi
+}
+
+set_kernel_config() {
+    RUNNING_KERNEL_CONFIG="/boot/config-$RUNNING_KERNEL_VERSION"
+    KERNEL_CONFIG="$KERNEL_SOURCE/.config"
+    if [ ! -f "$KERNEL_CONFIG" ] ; then
+        echo
+        echo "$KERNEL_CONFIG not found"
+        if [ -f "$RUNNING_KERNEL_CONFIG" ] ; then
+            while [ true ] ; do
+                read -p "Copy and prepare $RUNNING_KERNEL_CONFIG? [y/n] " yn
+                case "$yn" in
+                [Yy] ) cp "$RUNNING_KERNEL_CONFIG" "$KERNEL_SOURCE/.config";
+                    SAVED_DIR="$PWD";
+                    cd "$KERNEL_SOURCE";
+                    make olddefconfig;
+                    cd "$SAVED_DIR";
+                    break;;
+                [Nn] ) echo "Kernel configuration file not found."; echo; exit;;
+                * ) echo "Invalid response. Enter y or n."; continue;;
+                esac
+            done
+        else
+            echo "$RUNNING_KERNEL_CONFIG not found." ; echo
+            exit
+        fi
+    fi
+}
+
+
+set_kernel_source_version() {
+    if [ "$OS_ID" = "debian" ] && [ "$KERNEL_SOURCE" = "$RUNNING_KERNEL_SOURCE" ] ; then
+        KERNEL_SOURCE_VERSION=$RUNNING_KERNEL_VERSION
+        return
+    fi
+    KERNEL_RELEASE_FILE="$KERNEL_SOURCE/include/config/kernel.release"
+    if [ -r "$KERNEL_RELEASE_FILE" ]; then
+        KERNEL_SOURCE_VERSION=`cat $KERNEL_RELEASE_FILE`
+    fi
+    if [ -z "$KERNEL_SOURCE_VERSION" ]; then
+        KERNEL_SOURCE_VERSION=`make -C "$KERNEL_SOURCE" -s kernelversion`
+    fi
+    if [ -z "$KERNEL_SOURCE_VERSION" ]; then
+        echo "Kernel source version not found." ; echo
+        exit
+    fi
+}
+
+set_driver_install_dir() {
+    if version_check "$KERNEL_SOURCE_VERSION" "2.6.39" ; then
+        # 2.6.39 or later
+        DRIVER_INSTALL_DIR=kernel/drivers/tty
+    else
+        # earlier than 2.6.39
+        DRIVER_INSTALL_DIR=kernel/drivers/char
+    fi
+}
+
+select_drivers() {
+    if version_check "$KERNEL_SOURCE_VERSION" "2.6.28" ; then
+        ENABLED_DRIVERS="BUILD_SYNCLINK_GT=Y"
+        BUILD_SYNCLINK_GT=Y
+    else
+        echo "SyncLink requires kernel 2.6.28 or later." ; echo ; exit 1
+    fi
+    if version_check "$KERNEL_SOURCE_VERSION" "2.6.28" ; then
+        ENABLED_DRIVERS="$ENABLED_DRIVERS BUILD_SYNCLINK_USB=Y"
+        BUILD_SYNCLINK_USB=Y
+    else
+        echo "SyncLink USB requires kernel 2.6.28 or later, disabled."
+    fi
+    N_HDLC_FILE=`find "/lib/modules/$KERNEL_SOURCE_VERSION" -name "n_hdlc*"`
+    if [ -z "$N_HDLC_FILE" -o ! -f "$N_HDLC_FILE" ] ; then
+        ENABLED_DRIVERS="$ENABLED_DRIVERS BUILD_N_HDLC=Y"
+        BUILD_N_HDLC="Y"
+    fi
+    if [ -z "$ENABLED_DRIVERS" ]; then
+        echo "No drivers enabled to build." ; echo ; exit 0
+    fi
+}
+
+copy_udev_rule_file() {
+    UDEV_RULES_DIR="/etc/udev/rules.d"
+    UDEV_RULES_FILE="10-microgate.rules"
+    if [ -d "$UDEV_RULES_DIR" -a ! -e "$UDEV_RULES_DIR/$UDEV_RULES_FILE" ] ; then
+        echo
+        echo "Copying rules file $UDEV_RULES_FILE to $UDEV_RULES_DIR"
+        echo "to exclude SyncLink devices from ModemManager."
+        echo "Reboot system for rules file to take effect."
+        cp $UDEV_RULES_FILE $UDEV_RULES_DIR
+    fi
+}
+
+display_build_summary() {
+    echo
+    echo "kernel source directory  = $KERNEL_SOURCE"
+    echo "kernel source version    = $KERNEL_SOURCE_VERSION"
+    echo "driver install directory = /lib/modules/$KERNEL_SOURCE_VERSION/$DRIVER_INSTALL_DIR"
+    echo "drivers to build:"
+    if [ ! -z "$BUILD_SYNCLINK_GT" ]; then
+        echo "   synclink_gt (PCI/PCIe)"
+    fi
+    if [ ! -z "$BUILD_SYNCLINK_USB" ]; then
+        echo "   synclink_usb (USB)"
+    fi
+    if [ ! -z "$BUILD_N_HDLC" ]; then
+        echo "   n_hdlc (synchronous tty line discipline)"
+    fi
+    echo
+}
+
+#
+# update synclink.h header file in kernel source if needed
+#
+update_synclink_header() {
+    if [ "$KERNEL_SOURCE" = "$RUNNING_KERNEL_SOURCE" ] && [ ! -z "$RUNNING_KERNEL_HEADER" ] ; then
+        HEADER_DIR=${RUNNING_KERNEL_HEADER}
+    else
+        HEADER_DIR=$KERNEL_SOURCE
+    fi
+    if ! diff -q ../c/include/synclink.h "$HEADER_DIR/include/linux/synclink.h" >> /dev/null ; then
+        while [ true ] ; do
+        read -p "Update synclink.h in $HEADER_DIR ? [y/n] " yn
+        case "$yn" in
+            [Yy] ) cp ../c/include/synclink.h "$HEADER_DIR/include/linux"; break;;
+            [Nn] ) break;;
+            * ) echo "Invalid response. Enter y or n."; continue;;
+        esac
+        done
+    else
+        echo "synclink.h up to date in $HEADER_DIR"
+    fi
+}
+
+build_drivers() {
+    echo
+    echo "Building drivers..."
+    echo
+    BUILD_CMD="make -C $KERNEL_SOURCE KERNEL_BUILD_OS_ID=$OS_ID M=$PWD modules $ENABLED_DRIVERS"
+    echo $BUILD_CMD
+    if $BUILD_CMD ; then
+        echo
+        echo "*** driver build success ***"
+        echo
+    else
+        echo
+        echo "driver build error"
+        echo "review errors and correct problem then try again"
+        echo
+        displayFailAndExit
+    fi
+}
+
+clean_build_files() {
+    echo ; echo "Cleaning build files..." ; echo
+    BUILD_CMD="make -C $KERNEL_SOURCE M=$PWD clean"
+    echo $BUILD_CMD
+    if $BUILD_CMD ; then
+        echo ; echo "*** clean success ***" ; echo
+    else
+        echo ; echo "*** clean error ***" ; echo
+    fi
+}
+
+manual_depmod() {
+    # run depmod manually
+    DEPMOD="/sbin/depmod"
+    BOOT_SYSTEM_MAP="/boot/System.map-$KERNEL_SOURCE_VERSION"
+    MODULE_SYMVERS="$KERNEL_SOURCE/Module.symvers"
+    PROC_KALLSYMS="/proc/kallsyms"
+    if [ -f "$BOOT_SYSTEM_MAP" ]; then
+        DEPMOD_CMD="$DEPMOD -a -F $BOOT_SYSTEM_MAP $KERNEL_SOURCE_VERSION"
+    elif [ -f "$MODULE_SYMVERS" ]; then
+        DEPMOD_CMD="$DEPMOD -a -E $MODULE_SYMVERS $KERNEL_SOURCE_VERSION"
+    elif [ -n "$USE_RUNNING_KERNEL" ]; then
+        if [ -f "$PROC_KALLSYMS" ]; then
+            DEPMOD_CMD="$DEPMOD -a -F $PROC_KALLSYMS $KERNEL_SOURCE_VERSION"
+        else
+            DEPMOD_CMD="$DEPMOD -a"
+        fi
+    fi
+    if [ -z "$DEPMOD_CMD" ]; then
+        echo "missing symbol files" ; exit 1
+    else
+        echo $DEPMOD_CMD
+        if ! $DEPMOD_CMD ; then
+            echo "module dependency error" ; exit 1
+        fi
+    fi
+}
+
+install_drivers() {
+    echo ; echo "unload old drivers..."
+    modprobe -r synclink_gt
+    modprobe -r synclink_usb
+
+    echo "delete old drivers..."
+    DRIVER_DIR=/lib/modules/$KERNEL_SOURCE_VERSION/$DRIVER_INSTALL_DIR
+    rm -f $DRIVER_DIR/synclink_gt.ko*
+    rm -f $DRIVER_DIR/synclink_usb.ko*
+
+    echo "install new drivers..." ; echo
+
+    # Clear CONFIG_MODULE_SIG_ALL to suppress driver signing errors
+    INSTALL_CMD="make -C $KERNEL_SOURCE M=$PWD CONFIG_MODULE_SIG_ALL= INSTALL_MOD_DIR=$DRIVER_INSTALL_DIR $ENABLED_DRIVERS modules_install"
+    echo $INSTALL_CMD
+    if $INSTALL_CMD ; then
+        SYSTEM_MAP="$KERNEL_SOURCE/System.map"
+        if [ ! -f "$SYSTEM_MAP" ]; then
+            # If system map is missing in kernel source directory the kernel source
+            # depmod command fails. This happens when building drivers against distribution
+            # built kernels. Run depmod manually by looking for the system map in other places.
+            echo "$SYSTEM_MAP missing, run depmod manually"
+            manual_depmod
+        fi
+        echo ; echo "*** driver install success ***" ; echo
+    else
+        echo ; echo "Install failed." ; echo
+    fi
+
+    # load new drivers
+    modprobe synclink_gt
+    modprobe synclink_usb
+}
+
+echo
+echo "=== SyncLink Drivers Build/Install/Clean Script ==="
+echo
+
+if [ -n $1 ] ; then
+    if [ "$1" = "clean" ] ; then
+        BUILD_CLEAN=1
+    else
+        CMD_LINE_SRC=$1
+    fi
+fi
+
+#
+# collect information
+#
+set_os
+verify_os
+set_kernel_source
+
+if [ $BUILD_CLEAN ] ; then
+    clean_build_files
+    exit
+fi
+
+#
+# build
+#
+set_kernel_source_version
+set_kernel_config
+select_drivers
+display_build_summary
+update_synclink_header
+build_drivers
+
+#
+# install
+#
+copy_udev_rule_file
+set_driver_install_dir
+install_drivers
+
+exit 0

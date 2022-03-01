@@ -534,7 +534,6 @@ void display_params(char *devname, MGSL_PARAMS* params, int idlemode)
 
 	printf("mode=%s\n", str);
 	printf("loopback=%s\n", params->loopback ? enabled_str : disabled_str);
-
 	printf("flags=");
 
 	if (params->flags & HDLC_FLAG_UNDERRUN_ABORT15)

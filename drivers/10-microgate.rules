@@ -1,0 +1,5 @@
+#
+# add environment variables so ModemManager ignores SyncLink devices
+#
+SUBSYSTEMS=="pci", ATTRS{vendor}=="0x13c0", ENV{ID_MM_DEVICE_IGNORE}:="1", ENV{ID_MM_CANDIDATE}:="0"
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="2618", ENV{ID_MM_DEVICE_IGNORE}:="1", ENV{ID_MM_CANDIDATE}:="0"
