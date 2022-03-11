@@ -34,7 +34,7 @@ else
     SPEED=$1
 fi
 
-DEVICE=/dev/ttySLG
+DEVICE=/dev/ttyUSB
 #echo "$DEVICE"
 
 #if [ ! -z $1 ] ; then
